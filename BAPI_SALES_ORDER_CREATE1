@@ -1,0 +1,79 @@
+DATA: wa_poheader     type  bapimepoheader.         
+DATA: wa_poheaderx    type  bapimepoheaderx.        
+DATA: it_poitem       type table of bapimepoitem.  
+DATA: it_poitemx      type table of bapimepoitemx.  
+DATA: wa_poitem       like line of it_poitem.      
+DATA: wa_poitemx      like line of it_poitemx.     
+DATA: it_bapiret2     type table of bapiret2.       
+DATA: wa_bapiret2     like line of it_bapiret2.     
+DATA: v_ebeln         TYPE ebeln.                   
+ 
+* Edit header
+clear: wa_poheader.
+wa_poheader-comp_code    = '0123'.
+wa_poheader-doc_type     = 'NB'.
+wa_poheader-vendor       = '0001000000'.
+wa_poheader-creat_date   = sy-datum.
+wa_poheader-purch_org    = 'D000'.
+wa_poheader-pur_group    = 'X01'.
+wa_poheader-doc_date     = sy-datum.
+ 
+clear: wa_poheaderx.
+wa_poheaderx-comp_code   = 'X'. 
+wa_poheaderx-doc_type    = 'X'.
+wa_poheaderx-vendor      = 'X'.
+wa_poheaderx-creat_date  = 'X'.
+wa_poheaderx-purch_org   = 'X'.
+wa_poheaderx-pur_group   = 'X'.
+wa_poheaderx-doc_date    = 'X'.
+ 
+* Edit Item
+clear: wa_poitem.
+wa_poitem-po_item    = '00010'.
+wa_poitem-material   = '000000000200000000'.
+wa_poitem-plant      = 'D001'.
+wa_poitem-tax_code   = 'V1'.
+wa_poitem-quantity   = 1.
+APPEND wa_poitem to it_poitem.
+ 
+clear: wa_poitem.
+wa_poitemx-po_item      = '00010'.
+wa_poitemx-po_itemx     = 'X'. 
+wa_poitemx-plant        = 'X'.
+wa_poitemx-tax_code     = 'X'.
+wa_poitemx-material     = 'X'.
+wa_poitemx-quantity     = 'X'.
+APPEND wa_poitemx to it_poitemx.
+ 
+* Call BAPI
+CALL FUNCTION 'BAPI_PO_CREATE1'
+  EXPORTING
+    poheader         = wa_poheader
+    poheaderx        = wa_poheaderx
+*   TESTRUN          = 'X' 
+  IMPORTING
+    exppurchaseorder = v_ebeln
+  TABLES
+    return           = it_bapiret2
+    poitem           = it_poitem
+    poitemx          = it_poitemx
+*   poschedule       =
+*   poschedulex      =
+  .
+ 
+ 
+IF NOT v_ebeln IS INITIAL.
+* Commit
+  CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+    EXPORTING
+      wait = 'X'.
+ 
+**** Success ****
+ 
+ELSE.
+  LOOP AT it_bapiret2 INTO wa_bapiret2 WHERE type = 'E'.
+ 
+**** Error ****
+ 
+  ENDLOOP.
+ENDIF.
