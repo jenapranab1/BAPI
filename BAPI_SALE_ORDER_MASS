@@ -184,7 +184,7 @@ FORM CREATE_ORDER .
 
     ORDER_ITEMS_IN-ITM_NUMBER    = gv_item.
 
-    CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+    CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT' ////Function module converts external number format into an internal sap format.
       EXPORTING
         INPUT         = gs_itab-matnr
      IMPORTING
