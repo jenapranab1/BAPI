@@ -1,0 +1,90 @@
+
+FM :BAPI_SALESDOCU_CREATEFROMDATA1
+
+DATA: v_vbeln LIKE vbak-vbeln. "Order Number
+DATA: header LIKE bapisdhead1. "Sales Order Header
+DATA: headerx LIKE bapisdhead1x. "Sales Order Header indicator
+DATA: item LIKE bapisditem OCCURS 0 WITH HEADER LINE. "Sales Order Item
+DATA: itemx LIKE bapisditemx OCCURS 0 WITH HEADER LINE. "Sales Order Item indicator
+DATA: partner LIKE bapipartnr OCCURS 0 WITH HEADER LINE. "Partner
+DATA: return LIKE bapiret2 OCCURS 0 WITH HEADER LINE. "Error Table
+DATA: lt_schedules_in TYPE STANDARD TABLE OF bapischdl WITH HEADER LINE. "Schedule line 
+DATA: lt_schedules_inx TYPE STANDARD TABLE OF bapischdlx WITH HEADER LINE."Schedule line indicator
+ 
+*Edit Sales Order Header
+header-doc_type = 'XXXX'
+header-sales_org = 'XXXX.
+header-distr_chan = 'XX'.
+header-division = 'XX'.
+ 
+*Edit Sales Order Header indicator
+headerx-updateflag = 'I'.
+headerx-doc_type = 'X'.
+headerx-sales_org = 'X'.
+headerx-distr_chan = 'X'.
+headerx-division = 'X'.
+ 
+*Edit partner
+partner-partn_role = 'AG'.
+partner-partn_numb = '0000000366'.
+APPEND partner.
+partner-partn_role = 'WE'.
+partner-partn_numb = '0000000366'.
+APPEND partner.
+ 
+*Edit Sales Order Item 
+item-itm_number = '000010'.
+item-material = '000000000410000074'.
+item-plant = 'XXXX'.
+item-target_qty = 1.
+item-target_qu = 'ŞT'.
+APPEND item.
+ 
+*Edit Sales Order Item indicator
+itemx-updateflag = 'I'.
+itemx-itm_number = 'X'
+itemx-material = 'X'.
+itemx-plant = 'X'.
+itemx-target_qty = 'X'.
+itemx-target_qu = 'X'.
+APPEND itemx.
+ 
+*Edit Schedule line
+lt_schedules_in-itm_number = '000010'.
+lt_schedules_in-sched_line = '0001'.
+lt_schedules_in-req_qty = 1.
+APPEND lt_schedules_in.
+ 
+*Edit Schedule line indicator
+lt_schedules_inx-itm_number = '000010'.
+lt_schedules_inx-sched_line = '0001'.
+lt_schedules_inx-updateflag = 'I'.
+lt_schedules_inx-req_qty = 'X'.
+APPEND lt_schedules_inx.
+ 
+*Call BAPI
+CALL FUNCTION 'BAPI_SALESDOCU_CREATEFROMDATA1'
+EXPORTING
+sales_header_in = header
+sales header_inx = headerxl
+IMPORTING
+salesdocument_ex = v_vbeln
+TABLES
+return = return
+sales_items_in = item
+sales_items_inx = itemx
+sales_schedules_in = lt_schedules_in
+sales_schedules_inx = lt_schedules_inx
+sales_partners = partner.
+*Check_the return table.
+IF NOT v_vbeln IS INITIAL.
+*Commit
+CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+EXPORTING
+wait = 'X'.
+**** Success ****
+ELSE.
+LOOP AT return WHERE type = 'E' OR type = 'A'.
+**** Failure ****
+ENDLOOP.
+ENDIF.
