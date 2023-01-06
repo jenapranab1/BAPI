@@ -24,9 +24,9 @@ TYPES : BEGIN OF TP_ITAB,
           PLANT(4),
           STLOC(4),
           PRICE(15),
-        END OF TP_ITAB.
+        END OF TP_ITAB. // Structure 
 
-DATA : GT_ITAB TYPE STANDARD TABLE OF TP_ITAB,
+DATA : GT_ITAB TYPE STANDARD TABLE OF TP_ITAB,  /// Internal table 
        GS_ITAB TYPE TP_ITAB,
        gs_itab1 type tp_itab.
 
@@ -101,7 +101,7 @@ FORM UPLOAD_FILE .
 *     FILELENGTH              =
 *     HEADER                  =
     TABLES
-      DATA_TAB                = GT_ITAB
+      DATA_TAB                = GT_ITAB   // File data stored in Internal table 
 *    CHANGING
 *     ISSCANPERFORMED         = ' '
     EXCEPTIONS
