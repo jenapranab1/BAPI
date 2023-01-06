@@ -1,0 +1,313 @@
+Objective :
+see step by step process of sales order creation (VA01) using bapi, the video is created specially for fresher / beginner level abap consultant 
+
+steps :
+1: Sales order creation using VA01
+2: Search for BAPI
+3: Test BAPI in function builder SE37
+4: Create program to created sales order using text file.
+
+ABAP Code :
+
+REPORT ZK_CREATE_SALES_ORDER.
+
+TYPES : BEGIN OF TP_ITAB,
+          ORDER_TYPE(4),
+          SORG(4),
+          DCH(2),
+          DIV(2),
+          KUNNR         TYPE KUNNR,
+          MATNR         TYPE MATNR,
+          QTY(15),
+          UOM(4),
+          WBS(24),
+          PLANT(4),
+          STLOC(4),
+          PRICE(15),
+        END OF TP_ITAB.
+
+DATA : GT_ITAB TYPE STANDARD TABLE OF TP_ITAB,
+       GS_ITAB TYPE TP_ITAB,
+       gs_itab1 type tp_itab.
+
+
+DATA : ORDER_HEADER_IN      LIKE BAPISDHD1,
+       ORDER_HEADER_INX      LIKE BAPISDHD1X,
+       SALESDOCUMENT        LIKE  BAPIVBELN-VBELN,
+       RETURN               LIKE  BAPIRET2  OCCURS 0 WITH HEADER LINE,
+       ORDER_ITEMS_IN       LIKE  BAPISDITM OCCURS 0 WITH HEADER LINE,
+       ORDER_ITEMS_INX      LIKE  BAPISDITMX OCCURS 0 WITH HEADER LINE,
+       ORDER_SCHEDULES_IN   LIKE  BAPISCHDL OCCURS 0 WITH HEADER LINE,
+       ORDER_SCHEDULES_INX  LIKE  BAPISCHDLX OCCURS 0 WITH HEADER LINE,
+       ORDER_CONDITIONS_IN  LIKE  BAPICOND OCCURS 0 WITH HEADER LINE,
+       ORDER_CONDITIONS_INX LIKE  BAPICONDX OCCURS 0 WITH HEADER LINE.
+
+
+
+DATA : GV_FILE TYPE STRING,
+       gv_item type vbap-POSNR.
+
+SELECTION-SCREEN BEGIN OF BLOCK B1 WITH FRAME TITLE TEXT-001.
+PARAMETERS : P_FILE TYPE IBIPPARMS-PATH OBLIGATORY.
+SELECTION-SCREEN END OF BLOCK B1.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR P_FILE.
+
+  CALL FUNCTION 'F4_FILENAME'
+    EXPORTING
+      PROGRAM_NAME  = SYST-CPROG
+      DYNPRO_NUMBER = SYST-DYNNR
+*     FIELD_NAME    = ' '
+    IMPORTING
+      FILE_NAME     = P_FILE.
+
+START-OF-SELECTION.
+  IF P_FILE IS NOT INITIAL.
+    PERFORM UPLOAD_FILE.
+    IF GT_ITAB[] IS NOT INITIAL.
+      PERFORM CREATE_ORDER.
+    ENDIF.
+
+  ENDIF.
+
+END-OF-SELECTION.
+*&---------------------------------------------------------------------*
+*&      Form  UPLOAD_FILE
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM UPLOAD_FILE .
+
+  GV_FILE = P_FILE.
+
+  CALL FUNCTION 'GUI_UPLOAD'
+    EXPORTING
+      FILENAME                = GV_FILE
+      FILETYPE                = 'ASC'
+      HAS_FIELD_SEPARATOR     = 'X'
+*     HEADER_LENGTH           = 0
+*     READ_BY_LINE            = 'X'
+*     DAT_MODE                = ' '
+*     CODEPAGE                = ' '
+*     IGNORE_CERR             = ABAP_TRUE
+*     REPLACEMENT             = '#'
+*     CHECK_BOM               = ' '
+*     VIRUS_SCAN_PROFILE      =
+*     NO_AUTH_CHECK           = ' '
+*    IMPORTING
+*     FILELENGTH              =
+*     HEADER                  =
+    TABLES
+      DATA_TAB                = GT_ITAB
+*    CHANGING
+*     ISSCANPERFORMED         = ' '
+    EXCEPTIONS
+      FILE_OPEN_ERROR         = 1
+      FILE_READ_ERROR         = 2
+      NO_BATCH                = 3
+      GUI_REFUSE_FILETRANSFER = 4
+      INVALID_TYPE            = 5
+      NO_AUTHORITY            = 6
+      UNKNOWN_ERROR           = 7
+      BAD_DATA_FORMAT         = 8
+      HEADER_NOT_ALLOWED      = 9
+      SEPARATOR_NOT_ALLOWED   = 10
+      HEADER_TOO_LONG         = 11
+      UNKNOWN_DP_ERROR        = 12
+      ACCESS_DENIED           = 13
+      DP_OUT_OF_MEMORY        = 14
+      DISK_FULL               = 15
+      DP_TIMEOUT              = 16
+      OTHERS                  = 17.
+  IF SY-SUBRC <> 0.
+* Implement suitable error handling here
+  ENDIF.
+
+
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      Form  CREATE_ORDER
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM CREATE_ORDER .
+
+     clear : gs_itab, gs_itab1.
+     read TABLE gt_itab into gs_itab1 INDEX 1.
+
+     clear : ORDER_HEADER_IN, ORDER_HEADER_INX, ORDER_PARTNERS[], ORDER_PARTNERS.
+
+"HEADER infomration
+    ORDER_HEADER_IN-DOC_TYPE   = GS_ITAB1-ORDER_TYPE.
+    ORDER_HEADER_IN-SALES_ORG  = GS_ITAB1-SORG.
+    ORDER_HEADER_IN-DISTR_CHAN = GS_ITAB1-DCH.
+    ORDER_HEADER_IN-DIVISION   = GS_ITAB1-DIV.
+
+    ORDER_HEADER_INX-UPDATEFLAG = 'I'.
+    ORDER_HEADER_INX-DOC_TYPE   = 'X'.
+    ORDER_HEADER_INX-SALES_ORG  = 'X'.
+    ORDER_HEADER_INX-DISTR_CHAN = 'X'.
+    ORDER_HEADER_INX-DIVISION   = 'X'.
+
+"partner details.
+    ORDER_PARTNERS-PARTN_ROLE   = 'AG'.
+    ORDER_PARTNERS-PARTN_NUMB   = GS_ITAB1-KUNNR.
+    APPEND ORDER_PARTNERS.
+    CLEAR : ORDER_PARTNERS.
+
+    ORDER_PARTNERS-PARTN_ROLE   = 'WE'.
+    ORDER_PARTNERS-PARTN_NUMB   = GS_ITAB1-KUNNR.
+    APPEND ORDER_PARTNERS.
+    CLEAR : ORDER_PARTNERS.
+
+    ORDER_PARTNERS-PARTN_ROLE   = 'RE'.
+    ORDER_PARTNERS-PARTN_NUMB   = GS_ITAB1-KUNNR.
+    APPEND ORDER_PARTNERS.
+    CLEAR : ORDER_PARTNERS.
+
+    ORDER_PARTNERS-PARTN_ROLE   = 'RG'.
+    ORDER_PARTNERS-PARTN_NUMB   = GS_ITAB1-KUNNR.
+    APPEND ORDER_PARTNERS.
+    CLEAR : ORDER_PARTNERS.
+
+"lien items
+    loop at gt_itab into gs_itab.
+
+    GV_ITEM   = gv_item + 10.
+
+    ORDER_ITEMS_IN-ITM_NUMBER    = gv_item.
+
+    CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+      EXPORTING
+        INPUT         = gs_itab-matnr
+     IMPORTING
+       OUTPUT        = gs_itab-matnr
+              .
+    ORDER_ITEMS_IN-MATERIAL      = GS_ITAB-MATNR.
+
+    CONDENSE gs_itab-QTY.
+    ORDER_ITEMS_IN-TARGET_QTY    = gs_itab-qty.
+    ORDER_ITEMS_IN-TARGET_QU     = gs_itab-UOM.
+    ORDER_ITEMS_IN-WBS_ELEM      = gs_itab-WBS.
+    ORDER_ITEMS_IN-PLANT         = gs_itab-PLANT.
+    ORDER_ITEMS_IN-STORE_LOC     = gs_itab-STLOC.
+    append ORDER_ITEMS_IN.
+    clear : ORDER_ITEMS_IN.
+
+    ORDER_ITEMS_INX-ITM_NUMBER    = gv_item.
+    ORDER_ITEMS_INX-MATERIAL      = 'X'.
+    ORDER_ITEMS_INX-TARGET_QTY    = 'X'.
+    ORDER_ITEMS_INX-TARGET_QU     = 'X'.
+    ORDER_ITEMS_INX-WBS_ELEM      = 'X'.
+    ORDER_ITEMS_INX-PLANT         = 'X'.
+    ORDER_ITEMS_INX-STORE_LOC     = 'X'.
+    append ORDER_ITEMS_INX.
+    clear : ORDER_ITEMS_INX.
+
+"schedul el lines
+     ORDER_SCHEDULES_IN-ITM_NUMBER = gv_item.
+     ORDER_SCHEDULES_IN-REQ_QTY    = gs_itab-QTY.
+     APPEND ORDER_SCHEDULES_IN.
+     clear : ORDER_SCHEDULES_IN.
+
+     ORDER_SCHEDULES_INX-ITM_NUMBER = gv_item.
+     ORDER_SCHEDULES_INX-REQ_QTY    = 'X'.
+     APPEND ORDER_SCHEDULES_INX.
+     clear : ORDER_SCHEDULES_INX.
+
+"condiotn values
+     ORDER_CONDITIONS_IN-ITM_NUMBER  = GV_ITEM.
+     ORDER_CONDITIONS_IN-COND_TYPE   = 'ZBAS'.
+
+     CONDENSE gs_itab-price.
+     ORDER_CONDITIONS_IN-COND_VALUE = ( gs_itab-price / 10 ).
+     append ORDER_CONDITIONS_IN.
+     clear : ORDER_CONDITIONS_IN.
+
+     ORDER_CONDITIONS_INX-ITM_NUMBER  = GV_ITEM.
+     ORDER_CONDITIONS_INX-COND_TYPE    = 'ZBAS'.
+     ORDER_CONDITIONS_INX-COND_VALUE   = 'X'.
+     append ORDER_CONDITIONS_INX.
+     clear : ORDER_CONDITIONS_INX.
+
+
+    clear : gs_itab.
+    endloop.
+
+"call bapi
+     CALL FUNCTION 'BAPI_SALESORDER_CREATEFROMDAT2'
+       EXPORTING
+*        SALESDOCUMENTIN               =
+         ORDER_HEADER_IN               = ORDER_HEADER_IN
+        ORDER_HEADER_INX              = ORDER_HEADER_INX
+*        SENDER                        =
+*        BINARY_RELATIONSHIPTYPE       =
+*        INT_NUMBER_ASSIGNMENT         =
+*        BEHAVE_WHEN_ERROR             =
+*        LOGIC_SWITCH                  =
+*        TESTRUN                       =
+*        CONVERT                       = ' '
+      IMPORTING
+        SALESDOCUMENT                 = SALESDOCUMENT
+       TABLES
+        RETURN                        = RETURN
+        ORDER_ITEMS_IN                = ORDER_ITEMS_IN
+        ORDER_ITEMS_INX               = ORDER_ITEMS_INX
+         ORDER_PARTNERS                = ORDER_PARTNERS
+        ORDER_SCHEDULES_IN            = ORDER_SCHEDULES_IN
+        ORDER_SCHEDULES_INX           = ORDER_SCHEDULES_INX
+        ORDER_CONDITIONS_IN           = ORDER_CONDITIONS_IN
+        ORDER_CONDITIONS_INX          = ORDER_CONDITIONS_INX
+*        ORDER_CFGS_REF                =
+*        ORDER_CFGS_INST               =
+*        ORDER_CFGS_PART_OF            =
+*        ORDER_CFGS_VALUE              =
+*        ORDER_CFGS_BLOB               =
+*        ORDER_CFGS_VK                 =
+*        ORDER_CFGS_REFINST            =
+*        ORDER_CCARD                   =
+*        ORDER_TEXT                    =
+*        ORDER_KEYS                    =
+*        EXTENSIONIN                   =
+*        PARTNERADDRESSES              =
+*        EXTENSIONEX                   =
+*        NFMETALLITMS                  =
+               .
+
+     if SALESDOCUMENT is NOT INITIAL.
+
+        CALL FUNCTION 'BAPI_TRANSACTION_COMMIT'
+         EXPORTING
+           WAIT          = 'X'
+*         IMPORTING
+*           RETURN        =
+                  .
+
+       write : SALESDOCUMENT.
+
+     else.
+        write : 'error while creating order'.
+     endif.
+
+ENDFORM.
+
+       
+       
+       
+       
+       
+       
+       
+       
+       
+       
+       
+       
+       
