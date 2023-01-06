@@ -1,0 +1,497 @@
+REPORT zmm_po_create.
+
+DATA :  poheader      TYPE bapimepoheader,
+        poheaderx     TYPE bapimepoheaderx,
+        it_return     LIKE bapiret2 OCCURS 0 WITH HEADER LINE,
+        it_return1    LIKE bapiret2 OCCURS 0 WITH HEADER LINE,
+        it_poitem     LIKE bapimepoitem OCCURS 0 WITH HEADER LINE,
+        it_poitemx    LIKE bapimepoitemx OCCURS 0 WITH HEADER LINE,
+        it_potextitem LIKE bapimepotext OCCURS 0 WITH HEADER LINE,
+        it_POSCHEDULE   like BAPIMEPOSCHEDULE OCCURS 0 WITH HEADER LINE,
+        it_POSCHEDULEX   LIKE BAPIMEPOSCHEDULX OCCURS 0 WITH HEADER LINE.
+
+DATA: lv_ponum TYPE bapimepoheader-po_number.
+DATA: gd_layout TYPE         slis_layout_alv,
+      gd_repid  TYPE         sy-repid,
+      i_events  TYPE         slis_t_event,
+      w_events  LIKE LINE OF i_events.
+DATA: i_fieldcat  TYPE slis_t_fieldcat_alv,
+      wa_fieldcat TYPE slis_fieldcat_alv.
+DATA: c_user_command TYPE slis_formname VALUE ‘USER_COMMAND’.
+
+DATA err_file TYPE string.
+
+DATA : BEGIN OF it_err OCCURS 0,
+         message1 TYPE bapi_msg,
+       END OF it_err.
+
+TYPES: BEGIN OF ty_input,
+         ebeln          TYPE ebeln,
+*         comp_code     TYPE bukrs,
+         doc_type       TYPE bsart,
+*         purch_org     TYPE ekorg,
+*         pur_group     TYPE ekgrp ,
+         suppl_plnt     TYPE lifnr,
+
+*         po_item       TYPE ebelp,
+         material       TYPE matnr,
+         plant(4) ,” type ewerks,
+         quantity(15),
+         net_price(28),
+         tax_code(2),
+         po_text(132),
+         sales_pers(30),
+         dlv_date(10) TYPE c,
+*        PRICE_UNIT(3),
+       END OF ty_input.
+
+DATA: BEGIN OF it_display OCCURS 0,
+        ebeln     TYPE ebeln,
+        ebeln1    TYPE text100,
+        type      TYPE char2,
+        number(5) TYPE n,
+        sale      TYPE char30,
+      END OF it_display.
+
+DATA : it_input TYPE TABLE OF ty_input WITH HEADER LINE,
+       wa_input LIKE LINE OF  it_input.
+
+DATA : it_input_h TYPE TABLE OF ty_input WITH HEADER LINE.
+DATA : wa_input_h LIKE LINE OF it_input_h.
+
+
+DATA: BEGIN OF i_excel OCCURS 0.
+        INCLUDE STRUCTURE alsmex_tabline.
+DATA END OF i_excel.
+
+PARAMETERS : p_bukrs TYPE ekko-bukrs DEFAULT ‘1000’ OBLIGATORY,
+             p_ekorg TYPE ekko-ekorg DEFAULT ‘1100’OBLIGATORY,
+             p_ekgrp     TYPE ekko-ekgrp DEFAULT ‘101’ OBLIGATORY.
+*             p_tax TYPE ekpo-mwskz DEFAULT ‘V0’ OBLIGATORY.
+
+PARAMETERS: p_file TYPE rlgrap-filename OBLIGATORY,
+            start TYPE i OBLIGATORY DEFAULT 4, end TYPE i OBLIGATORY.
+PARAMETERS file_err LIKE rlgrap-filename OBLIGATORY. “DEFAULT ‘C:\InitialStock_ErrorFile.txt’.
+
+
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_file.
+
+  CALL FUNCTION ‘KD_GET_FILENAME_ON_F4’
+    EXPORTING
+      program_name  = syst-repid
+    CHANGING
+      file_name     = p_file
+    EXCEPTIONS
+      mask_too_long = 1
+      OTHERS        = 2.
+  IF sy-subrc <> 0.
+  ENDIF.
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR file_err.
+  CALL FUNCTION ‘F4_FILENAME’
+    EXPORTING
+      program_name  = syst-cprog
+      dynpro_number = syst-dynnr
+    IMPORTING
+      file_name     = file_err.
+
+
+START-OF-SELECTION.
+  PERFORM file_upload.
+  PERFORM po_create.
+  PERFORM fieldcatlog .
+  PERFORM display_alv_report.
+  PERFORM download.
+
+
+
+*– Calling the function ALSM_EXCEL_TO_INTERNAL_TABLE
+FORM file_upload.
+  CALL FUNCTION ‘ALSM_EXCEL_TO_INTERNAL_TABLE’
+    EXPORTING
+      filename                = p_file
+      i_begin_col             = 1
+      i_begin_row             = start
+      i_end_col               = 67
+      i_end_row               = end
+    TABLES
+      intern                  = i_excel
+    EXCEPTIONS
+      inconsistent_parameters = 1
+      upload_ole              = 2
+      OTHERS                  = 3.
+
+  IF sy-subrc <> 0.
+*    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+*            WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+
+******************************* Excel format *********************
+
+  LOOP AT i_excel.
+    CASE i_excel-col.
+
+      WHEN ‘0001’.
+        it_input-ebeln = i_excel-value.
+*      WHEN ‘0002’.
+*        it_input-comp_code = i_excel-value.
+      WHEN ‘0002’.
+        it_input-doc_type = i_excel-value.
+*      WHEN ‘0004’.
+*        it_input-purch_org = i_excel-value.
+*      WHEN ‘0005’.
+*        it_input-pur_group = i_excel-value.
+      WHEN ‘0003’.
+        it_input-suppl_plnt = i_excel-value.
+*      WHEN ‘0007’.
+*        it_input-po_item = i_excel-value.
+      WHEN ‘0004’.
+        it_input-material = i_excel-value.
+      WHEN ‘0005’.
+        it_input-plant = i_excel-value.
+      WHEN ‘0006’.
+        it_input-quantity = i_excel-value.
+      WHEN ‘0007’.
+        it_input-net_price = i_excel-value.
+      WHEN ‘0008’.
+        it_input-tax_code = i_excel-value.
+      WHEN ‘0009’.
+        it_input-po_text = i_excel-value.
+      WHEN ‘0010’.
+        it_input-sales_pers = i_excel-value.
+
+      WHEN ‘0011’.
+        IT_INPUT-DLV_DATE = i_excel-VALUE.
+    ENDCASE.
+
+    AT END OF row.
+      APPEND it_input.
+      CLEAR it_input.
+    ENDAT.
+  ENDLOOP.
+
+ENDFORM.
+
+
+FORM po_create.
+
+  DATA : v1(10)  TYPE c,
+         v2(10)  TYPE c,
+         v3(10)  TYPE c ,
+         v4(10)  TYPE c,
+         v5(10)  TYPE c,
+         v6(10)  TYPE c ,
+         v_ebelp TYPE ekpo-ebelp,
+         v_verkf TYPE ekko-verkf.
+
+  LOOP AT it_input INTO wa_input .
+    SPLIT wa_input-sales_pers AT ‘/’ INTO v1 v2 v3 v4 v5 v6 .
+
+    CONDENSE : v4, v5, v6 .
+
+    CONCATENATE v4 v5 v6 INTO wa_input-ebeln .
+
+    IF wa_input-ebeln IS INITIAL .
+      wa_input-ebeln = v1.
+    ENDIF .
+
+
+    CALL FUNCTION ‘CONVERSION_EXIT_ALPHA_INPUT’
+      EXPORTING
+        input  = wa_input-suppl_plnt
+      IMPORTING
+        output = wa_input-suppl_plnt.
+
+
+    MODIFY it_input FROM wa_input TRANSPORTING ebeln suppl_plnt .
+
+  ENDLOOP .
+
+  it_input_h[] = it_input[].
+
+  SORT it_input_h  ASCENDING BY suppl_plnt sales_pers .
+  DELETE ADJACENT DUPLICATES FROM it_input_h COMPARING suppl_plnt sales_pers .
+
+  LOOP AT it_input_h INTO wa_input_h.
+
+    poheader-ref_1 = wa_input_h-ebeln.
+    poheader-comp_code = p_bukrs.
+    poheader-doc_type = wa_input_h-doc_type.
+    poheader-purch_org = p_ekorg.
+    poheader-pur_group = p_ekgrp.
+
+    poheader-vendor = wa_input_h-suppl_plnt.
+
+    DATA : lv_sale(30) TYPE c.
+    poheader-sales_pers = wa_input_h-sales_pers.
+    lv_sale = wa_input_h-sales_pers.
+    poheader-langu = sy-langu .
+    poheaderx-langu = ‘X’ .
+
+    poheaderx-ref_1 = ‘X’.
+
+    poheaderx-comp_code = ‘X’.
+    poheaderx-doc_type = ‘X’.
+    poheaderx-purch_org = ‘X’.
+    poheaderx-pur_group = ‘X’.
+    poheaderx-vendor = ‘X’.
+
+    poheaderx-sales_pers = ‘X’.
+
+    CLEAR v_ebelp .
+
+    LOOP AT it_input INTO wa_input
+      WHERE suppl_plnt EQ wa_input_h-suppl_plnt
+        AND sales_pers EQ wa_input_h-sales_pers.
+
+      v_ebelp = v_ebelp + 10 .
+
+      it_poitem-po_item = v_ebelp .”wa_input-po_item.                 “‘00010’.
+
+      CALL FUNCTION ‘CONVERSION_EXIT_MATN1_INPUT’
+        EXPORTING
+          input        = wa_input-material
+        IMPORTING
+          output       = wa_input-material
+        EXCEPTIONS
+          length_error = 1
+          OTHERS       = 2.
+      IF sy-subrc <> 0.
+* Implement suitable error handling here
+      ENDIF.
+
+      it_poitem-material = wa_input-material.”‘FGC018012932A002’.
+      it_poitem-ematerial =  wa_input-material.
+      it_poitem-plant = wa_input-plant. “”””””””D001
+      it_poitem-quantity = wa_input-quantity.”10.
+      it_poitem-net_price = wa_input-net_price.
+      it_poitem-tax_code = wa_input-tax_code.
+      it_poitem-conf_ctrl = ‘0004’ .
+      APPEND it_poitem.
+
+      it_poitemx-po_item = v_ebelp.
+      it_poitemx-material = ‘X’.
+      it_poitemx-ematerial = ‘X’.
+      it_poitemx-plant = ‘X’.
+      it_poitemx-quantity = ‘X’.
+      it_poitemx-net_price = ‘X’.
+      it_poitemx-tax_code = ‘X’.
+      it_poitemx-conf_ctrl = ‘X’ .
+*                    IT_POITEMX-PRICE_UNIT = ‘X’.
+      APPEND it_poitemx.
+
+      it_potextitem-po_item = v_ebelp.
+      it_potextitem-text_id = ‘F01’.
+      it_potextitem-text_line = wa_input-po_text.
+      APPEND it_potextitem.
+
+
+      it_POSCHEDULE-PO_ITEM = v_ebelp.
+      it_POSCHEDULE-DELIVERY_DATE = wa_input-dlv_date.
+
+      append it_POSCHEDULE.
+      CLEAR: it_POSCHEDULE.
+
+      it_POSCHEDULEX-PO_ITEM = v_ebelp.
+      it_POSCHEDULEX-DELIVERY_DATE = ‘X’.
+
+      APPEND it_POSCHEDULEX.
+      CLEAR: it_POSCHEDULEX.
+*      it_POSCHEDULE
+*      it_POSCHEDULEX
+
+      CLEAR : it_potextitem, it_poitemx, wa_input.
+
+    ENDLOOP.
+
+    CALL FUNCTION ‘BAPI_PO_CREATE1’
+      EXPORTING
+        poheader         = poheader
+        poheaderx        = poheaderx
+        no_price_from_po = ‘X’
+      IMPORTING
+        exppurchaseorder = lv_ponum
+      TABLES
+        return           = it_return
+        poitem           = it_poitem
+        poitemx          = it_poitemx
+        potextitem       = it_potextitem
+        POSCHEDULE       = IT_POSCHEDULE
+        POSCHEDULEX      = IT_POSCHEDULEX.
+
+    IF lv_ponum IS INITIAL.
+      SORT it_return BY type.
+      DELETE it_return WHERE type NE ‘E’.
+      ELSE.
+
+      CALL FUNCTION ‘BAPI_TRANSACTION_COMMIT’
+*           EXPORTING
+*             WAIT          =
+*           IMPORTING
+*             RETURN        =
+        .
+
+      it_display-ebeln = wa_input_h-ebeln.
+      it_display-ebeln1 = lv_ponum .
+      APPEND it_display.
+
+    ENDIF.
+
+    LOOP AT it_return.
+      it_display-ebeln = lv_ponum .
+      it_display-ebeln1 = it_return-message.
+      it_display-number = it_return-number.
+      it_display-type = it_return-type.
+      it_display-sale = lv_sale.
+      IF it_display-type EQ ‘E’ OR it_display-type EQ ‘S’.
+        APPEND it_display.
+        it_return1 = it_return.
+        APPEND it_return1.
+      ENDIF.
+    ENDLOOP.
+
+    CLEAR :poheader,poheaderx,wa_input_h,lv_ponum, lv_sale.
+    REFRESH : it_return,  it_poitem, it_poitemx,it_potextitem.
+    CLEAR : it_return,  it_poitem, it_poitemx,it_potextitem.
+    FREE : it_return,  it_poitem, it_poitemx,it_potextitem.
+    CLEAR: it_POSCHEDULE[],
+           it_POSCHEDULEX[].
+    CLEAR: it_POSCHEDULE,
+           it_POSCHEDULEX.
+  ENDLOOP.
+ENDFORM.
+*
+
+
+FORM fieldcatlog .
+
+  wa_fieldcat-tabname = ‘IT_DISPLAY’.
+  wa_fieldcat-fieldname = ‘EBELN’.
+  wa_fieldcat-seltext_m = ‘PO NO’.
+  wa_fieldcat-col_pos = 1.
+  wa_fieldcat-outputlen  = ‘5’.
+  APPEND wa_fieldcat TO i_fieldcat.
+  CLEAR wa_fieldcat.
+
+  wa_fieldcat-tabname = ‘IT_DISPLAY’.
+  wa_fieldcat-fieldname = ‘NUMBER’.
+  wa_fieldcat-seltext_m = ‘Number’.
+  wa_fieldcat-col_pos = 2.
+  wa_fieldcat-outputlen  = ‘5’.
+  APPEND wa_fieldcat TO i_fieldcat.
+  CLEAR wa_fieldcat.
+
+  wa_fieldcat-tabname = ‘IT_DISPLAY’.
+  wa_fieldcat-fieldname = ‘TYPE’.
+  wa_fieldcat-seltext_m = ‘Type’.
+  wa_fieldcat-col_pos = 3.
+  wa_fieldcat-outputlen  = ‘2’.
+  APPEND wa_fieldcat TO i_fieldcat.
+  CLEAR wa_fieldcat.
+
+
+  wa_fieldcat-tabname = ‘IT_DISPLAY’.
+  wa_fieldcat-fieldname = ‘SALE’.
+  wa_fieldcat-seltext_m = ‘Sales Person’.
+  wa_fieldcat-col_pos = 4.
+  wa_fieldcat-outputlen  = ’20’.
+  APPEND wa_fieldcat TO i_fieldcat.
+  CLEAR wa_fieldcat.
+
+
+  wa_fieldcat-tabname = ‘IT_DISPLAY’.
+  wa_fieldcat-fieldname = ‘EBELN1’.
+  wa_fieldcat-seltext_m = ‘Message’.
+  wa_fieldcat-col_pos = 5.
+  wa_fieldcat-outputlen  = ‘100’.
+  APPEND wa_fieldcat TO i_fieldcat.
+  CLEAR wa_fieldcat.
+
+ENDFORM.
+
+
+FORM display_alv_report .
+
+  gd_repid = sy-repid.
+
+  CALL FUNCTION ‘REUSE_ALV_GRID_DISPLAY’
+    EXPORTING
+      i_callback_program      = gd_repid
+      i_callback_user_command = c_user_command
+      is_layout               = gd_layout
+      i_callback_top_of_page  = ‘TOP_OF_PAGE’
+      it_fieldcat             = i_fieldcat[]
+      i_save                  = ‘X’
+      it_events               = i_events
+    TABLES
+      t_outtab                = it_display
+    EXCEPTIONS
+      program_error           = 1
+      OTHERS                  = 2.
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+            WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
+ENDFORM.                    ” DISPLAY_ALV_REPORT
+
+
+FORM top_of_page.
+  DATA: t_header TYPE slis_t_listheader,
+        w_header TYPE slis_listheader.
+
+  w_header-typ = ‘H’.
+  w_header-info = ‘PO LIST’.
+  APPEND w_header TO t_header.
+
+  CALL FUNCTION ‘REUSE_ALV_COMMENTARY_WRITE’
+    EXPORTING
+      it_list_commentary = t_header.
+
+ENDFORM.
+
+FORM user_command USING f_ucomm LIKE sy-ucomm
+                i_selfield TYPE slis_selfield.
+
+  CASE f_ucomm.
+    WHEN ‘&IC1’.
+      CASE i_selfield-sel_tab_field.
+        WHEN ‘IT_DISPLAY-EBELN1’.
+          READ TABLE it_display INDEX i_selfield-tabindex .”INTO S_ITAB.
+          SET PARAMETER ID ‘BES’ FIELD it_display-ebeln1.
+          CALL TRANSACTION ‘ME23N’ AND SKIP FIRST SCREEN.
+      ENDCASE.
+  ENDCASE.
+ENDFORM.
+
+
+FORM download .
+
+  err_file = file_err.
+  LOOP AT it_return1.
+    it_err-message1 = it_return1-message.
+    APPEND it_err.
+    CLEAR it_return1-message.
+  ENDLOOP.
+
+
+  CALL FUNCTION ‘GUI_DOWNLOAD’
+    EXPORTING
+*     BIN_FILESIZE          =
+      filename              = err_file
+      filetype              = ‘ASC’
+      append                = ‘X’
+      write_field_separator = ‘X’
+*   IMPORTING
+*     FILELENGTH            =
+    TABLES
+      data_tab              = it_err.
+
+ENDFORM.                    ” DOWNLOAD
+
+In above example of Bapi_po_create1 we decided to take input from user in selection screen are Company Code,
+Purchase Organization, Purchase Group and upload file which have materials information like 
+
+
+
