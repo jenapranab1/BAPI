@@ -104,7 +104,7 @@ ENDFORM.
 *----------------------------------------------------------------------*
 FORM CREATE_ORDER .
 
-     clear : gs_itab, gs_itab1.
+     clear : gs_itab, gs_itab1. / gs_itab for internal tab for maininternal table , where gs_itab1--> to hold the header data 
      read TABLE gt_itab into gs_itab1 INDEX 1.
 
      clear : ORDER_HEADER_IN, ORDER_HEADER_INX, ORDER_PARTNERS[], ORDER_PARTNERS.
