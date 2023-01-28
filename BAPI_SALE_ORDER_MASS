@@ -27,8 +27,8 @@ TYPES : BEGIN OF TP_ITAB,
         END OF TP_ITAB. // Structure 
 
 DATA : GT_ITAB TYPE STANDARD TABLE OF TP_ITAB,  /// Internal table 
-       GS_ITAB TYPE TP_ITAB,
-       gs_itab1 type tp_itab.
+       GS_ITAB TYPE TP_ITAB, // WORK AREA OF INTERNAL TAB 
+       gs_itab1 type tp_itab. // WORK AREA TO HOLD HEADER LINES SPECIALY
 
 
 DATA : ORDER_HEADER_IN      LIKE BAPISDHD1,
